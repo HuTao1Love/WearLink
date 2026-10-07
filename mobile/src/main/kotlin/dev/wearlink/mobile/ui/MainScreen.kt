@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -41,6 +42,7 @@ enum class Tab(val title: String, val icon: ImageVector) {
     Home("VPN", Icons.Default.PowerSettingsNew),
     Servers("Серверы", Icons.Default.Dns),
     Apps("Приложения", Icons.Default.Apps),
+    Lists("Списки", Icons.Default.Public),
     Add("Добавить", Icons.Default.Add),
 }
 
@@ -100,7 +102,7 @@ fun MainScreen(incoming: MutableStateFlow<String?>) {
                         selected = tab == item,
                         onClick = { tab = item },
                         icon = { Icon(item.icon, contentDescription = null) },
-                        label = { Text(item.title) },
+                        label = { Text(item.title, maxLines = 1, softWrap = false, style = MaterialTheme.typography.labelSmall) },
                     )
                 }
             }
@@ -111,6 +113,7 @@ fun MainScreen(incoming: MutableStateFlow<String?>) {
             Tab.Home -> HomeScreen(modifier, messages, onOpenServers = { tab = Tab.Servers })
             Tab.Servers -> ServersScreen(modifier, messages)
             Tab.Apps -> AppsScreen(modifier)
+            Tab.Lists -> ListsScreen(modifier, messages)
             Tab.Add -> AddScreen(
                 modifier = modifier,
                 messages = messages,

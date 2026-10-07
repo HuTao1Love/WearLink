@@ -2,6 +2,7 @@ package dev.wearlink.core
 
 import android.app.Application
 import android.content.Context
+import dev.wearlink.core.data.GeoLists
 import dev.wearlink.core.data.Importer
 import dev.wearlink.core.data.Store
 import dev.wearlink.core.data.SubscriptionWorker
@@ -41,6 +42,7 @@ object WearLinkCore {
         app = application
         store = Store(application)
         importer = Importer(store)
+        GeoLists.load(application)
         SubscriptionWorker.schedule(application)
         // A fresh process means sing-box is not running: drop a system proxy left behind by a
         // crash or a kill, otherwise the watch would have no internet at all.

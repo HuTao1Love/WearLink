@@ -114,6 +114,14 @@ fun HomeScreen(modifier: Modifier, messages: Messages, onOpenServers: () -> Unit
                     style = MaterialTheme.typography.titleMedium,
                 )
                 data.selectedServer?.let { Text(it.protocolLabel, style = MaterialTheme.typography.bodySmall) }
+                Text(
+                    if (data.lists.enabled) {
+                        "Маршрутизация: по спискам (${data.lists.sites.size + data.lists.ips.size} категорий)"
+                    } else {
+                        "Маршрутизация: весь трафик"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
         }
         Spacer(Modifier.height(16.dp))

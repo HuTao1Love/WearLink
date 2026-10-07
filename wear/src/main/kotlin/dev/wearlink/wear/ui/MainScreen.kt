@@ -15,6 +15,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
@@ -144,6 +145,20 @@ fun MainScreen(onNavigate: (String) -> Unit) {
                                 RoutingMode.ONLY_SELECTED -> "Только выбранные: ${data.routing.packages.size}"
                                 RoutingMode.ALL_EXCEPT -> "Кроме: ${data.routing.packages.size}"
                             },
+                        )
+                    },
+                )
+            }
+            item {
+                Button(
+                    onClick = { onNavigate(Routes.LISTS) },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.filledTonalButtonColors(),
+                    icon = { Icon(Icons.Default.Place, contentDescription = null) },
+                    label = { Text("Маршрутизация") },
+                    secondaryLabel = {
+                        Text(
+                            if (data.lists.enabled) "По спискам: ${data.lists.sites.size + data.lists.ips.size}" else "Весь трафик",
                         )
                     },
                 )

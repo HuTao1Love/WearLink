@@ -70,6 +70,11 @@ object VpnController {
         if (service != null) service.stopVpn() else _state.value = VpnState.Stopped
     }
 
+    /** Rebuilds the config (e.g. after the zkeen lists were refreshed) if the tunnel is up. */
+    fun reloadIfRunning() {
+        BoxVpnService.instance?.serviceReload()
+    }
+
     fun toggle(context: Context) {
         if (state.value.isActive) stop() else start(context)
     }

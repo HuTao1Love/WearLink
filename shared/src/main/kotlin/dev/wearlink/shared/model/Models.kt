@@ -222,3 +222,25 @@ data class AppRouting(
     val mode: RoutingMode = RoutingMode.ALL,
     val packages: Set<String> = emptySet(),
 )
+
+/**
+ * Selective routing by zkeen lists (github.com/jameszeroX/zkeen-domains, zkeen-ip): when
+ * [enabled], only traffic matching the chosen categories goes through the proxy.
+ */
+@Serializable
+data class ListRouting(
+    val enabled: Boolean = false,
+    val sites: Set<String> = DEFAULT_SITES,
+    val ips: Set<String> = DEFAULT_IPS,
+) {
+    companion object {
+        /** The categories the zkeen README routes through the proxy. */
+        val DEFAULT_SITES = setOf("DOMAINS", "OTHER", "POLITIC", "YOUTUBE")
+        val DEFAULT_IPS = setOf(
+            "AKAMAI", "AMAZON", "ARELION", "AZURE", "BUNNYCDN", "CDN77", "CLOUDFLARE", "COGENT",
+            "COLOCROSSING", "CONTABO", "DATACAMP", "DIGITALOCEAN", "DISCORD", "FASTLY", "FRANTECH",
+            "GCORE", "GOOGLE", "HETZNER", "LEASEWEB", "LINODE", "LIQUIDWEB", "MEGA", "MELBICOM",
+            "META", "ORACLE", "OVH", "SCALEWAY", "TELEGRAM", "VODAFONE", "VULTR", "YOUTUBE",
+        )
+    }
+}

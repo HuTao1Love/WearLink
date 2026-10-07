@@ -20,6 +20,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import dev.wearlink.core.WearLinkCore
+import dev.wearlink.core.data.GeoLists
 import dev.wearlink.shared.model.Server
 import dev.wearlink.shared.singbox.Inbound
 import dev.wearlink.shared.singbox.SingBoxConfig
@@ -113,6 +114,7 @@ class BoxVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         try {
             mode = VpnController.mode(this)
             VpnController.missingPermission(this)?.let { throw IllegalStateException(it) }
+            if (data.lists.enabled && GeoLists.catalog.value == null) GeoLists.update(this)
             WearLinkCore.ensureLibbox(this)
             val server0 = commandServer ?: Libbox.newCommandServer(this, this).also { commandServer = it }
             server0.startOrReloadService(buildConfig(server), OverrideOptions())
@@ -127,22 +129,26 @@ class BoxVpnService : VpnService(), PlatformInterface, CommandServerHandler {
         }
     }
 
-    private fun buildConfig(server: Server): String = SingBoxConfig.build(
-        server.config!!,
-        WearLinkCore.store.current.routing,
-        packageName,
-        inbound = if (mode == TunnelMode.PROXY) Inbound.LocalProxy(SystemProxy.PORT) else Inbound.Tun,
-    )
+    private fun buildConfig(server: Server): String {
+        val data = WearLinkCore.store.current
+        return SingBoxConfig.build(
+            server.config!!,
+            data.routing,
+            packageName,
+            inbound = if (mode == TunnelMode.PROXY) Inbound.LocalProxy(SystemProxy.PORT) else Inbound.Tun,
+            ruleSets = if (data.lists.enabled) GeoLists.ruleSets(this, data.lists) else null,
+        )
+    }
 
     /** Reloads the core when the default server or the app list changes while connected. */
     private fun watchSelection() {
         if (watchJob != null) return
         watchJob = WearLinkCore.scope.launch {
             WearLinkCore.store.data
-                .map { it.selectedServer to it.routing }
+                .map { Triple(it.selectedServer, it.routing, it.lists) }
                 .distinctUntilChanged()
                 .drop(1)
-                .collect { (server, _) ->
+                .collect { (server, _, _) ->
                     if (server == null) {
                         stopVpn()
                     } else {

@@ -35,6 +35,14 @@ sealed interface Inbound {
     data class LocalProxy(val port: Int) : Inbound
 }
 
+/** Local rule-set files for selective routing; tag → absolute path of a "source" JSON. */
+data class RuleSets(
+    val sites: Map<String, String> = emptyMap(),
+    val ips: Map<String, String> = emptyMap(),
+) {
+    val isEmpty: Boolean get() = sites.isEmpty() && ips.isEmpty()
+}
+
 /** Builds a sing-box 1.14 configuration: one inbound, one proxy out, DNS over the proxy. */
 object SingBoxConfig {
 
@@ -54,17 +62,21 @@ object SingBoxConfig {
         routing: AppRouting,
         ownPackage: String,
         inbound: Inbound = Inbound.Tun,
+        ruleSets: RuleSets? = null,
         logLevel: String = "warn",
-    ): String = json.encodeToString(JsonObject.serializer(), buildObject(proxy, routing, ownPackage, inbound, logLevel))
+    ): String = json.encodeToString(JsonObject.serializer(), buildObject(proxy, routing, ownPackage, inbound, ruleSets, logLevel))
 
     fun buildObject(
         proxy: ProxyConfig,
         routing: AppRouting,
         ownPackage: String,
         inbound: Inbound = Inbound.Tun,
+        ruleSets: RuleSets? = null,
         logLevel: String = "warn",
     ) =
         buildJsonObject {
+            // Selective mode: only rule-set matches use the proxy, everything else goes direct.
+            val selective = ruleSets?.takeUnless { it.isEmpty }
             putJsonObject("log") {
                 put("level", logLevel)
                 put("timestamp", false)
@@ -82,7 +94,16 @@ object SingBoxConfig {
                         put("tag", DNS_LOCAL)
                     }
                 }
-                put("final", DNS_REMOTE)
+                if (selective != null && selective.sites.isNotEmpty()) {
+                    // Listed (often DNS-poisoned) domains resolve over the proxy, the rest locally.
+                    putJsonArray("rules") {
+                        addJsonObject {
+                            putJsonArray("rule_set") { selective.sites.keys.forEach { add(it) } }
+                            put("server", DNS_REMOTE)
+                        }
+                    }
+                }
+                put("final", if (selective != null) DNS_LOCAL else DNS_REMOTE)
                 // Most proxies and watch networks have no working IPv6; avoid slow fallbacks.
                 put("strategy", "ipv4_only")
             }
@@ -116,6 +137,18 @@ object SingBoxConfig {
                 }
             }
             putJsonObject("route") {
+                if (selective != null) {
+                    putJsonArray("rule_set") {
+                        (selective.sites + selective.ips).forEach { (tag, path) ->
+                            addJsonObject {
+                                put("type", "local")
+                                put("tag", tag)
+                                put("format", "source")
+                                put("path", path)
+                            }
+                        }
+                    }
+                }
                 putJsonArray("rules") {
                     addJsonObject { put("action", "sniff") }
                     addJsonObject {
@@ -126,8 +159,22 @@ object SingBoxConfig {
                         put("ip_is_private", true)
                         put("outbound", DIRECT_TAG)
                     }
+                    if (selective != null) {
+                        if (selective.sites.isNotEmpty()) addJsonObject {
+                            putJsonArray("rule_set") { selective.sites.keys.forEach { add(it) } }
+                            put("outbound", PROXY_TAG)
+                        }
+                        if (selective.ips.isNotEmpty()) {
+                            // Proxy-mode requests carry a host name; resolve it so IP lists can match.
+                            addJsonObject { put("action", "resolve") }
+                            addJsonObject {
+                                putJsonArray("rule_set") { selective.ips.keys.forEach { add(it) } }
+                                put("outbound", PROXY_TAG)
+                            }
+                        }
+                    }
                 }
-                put("final", PROXY_TAG)
+                put("final", if (selective != null) DIRECT_TAG else PROXY_TAG)
                 put("auto_detect_interface", true)
                 put("default_domain_resolver", DNS_LOCAL)
             }

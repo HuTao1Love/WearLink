@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.core.util.AtomicFile
 import dev.wearlink.shared.model.AppRouting
+import dev.wearlink.shared.model.ListRouting
 import dev.wearlink.shared.model.Server
 import dev.wearlink.shared.model.Subscription
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,7 @@ data class AppData(
     val servers: List<Server> = emptyList(),
     val selectedServerId: String? = null,
     val routing: AppRouting = AppRouting(),
+    val lists: ListRouting = ListRouting(),
 ) {
     val selectedServer: Server?
         get() = servers.firstOrNull { it.id == selectedServerId && it.isUsable }
@@ -57,6 +59,8 @@ class Store(context: Context) {
     suspend fun select(serverId: String) = update { it.copy(selectedServerId = serverId) }
 
     suspend fun setRouting(routing: AppRouting) = update { it.copy(routing = routing) }
+
+    suspend fun setLists(lists: ListRouting) = update { it.copy(lists = lists) }
 
     suspend fun deleteServer(serverId: String) = update { data ->
         data.copy(servers = data.servers.filterNot { it.id == serverId }).withValidSelection()

@@ -11,6 +11,7 @@ object Routes {
     const val MAIN = "main"
     const val SERVERS = "servers"
     const val APPS = "apps"
+    const val LISTS = "lists"
     const val ADD = "add"
     const val DELETE = "delete/{id}"
     fun delete(id: String) = "delete/$id"
@@ -25,6 +26,7 @@ fun WearLinkApp() {
                 composable(Routes.MAIN) { MainScreen(onNavigate = { nav.navigate(it) }) }
                 composable(Routes.SERVERS) { ServersScreen(onDelete = { nav.navigate(Routes.delete(it)) }) }
                 composable(Routes.APPS) { AppsScreen() }
+                composable(Routes.LISTS) { ListsScreen() }
                 composable(Routes.ADD) { AddScreen(onDone = { nav.popBackStack() }) }
                 composable(Routes.DELETE) { entry ->
                     DeleteScreen(id = entry.arguments?.getString("id").orEmpty(), onDone = { nav.popBackStack() })
