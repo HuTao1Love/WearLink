@@ -5,10 +5,21 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
-// Release key from keystore.properties (not in git). Updates install only over APKs signed with it.
-val keystoreProps = Properties().apply {
-    rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+val localProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
+
+fun secret(env: String, property: String): String? =
+    System.getenv(env)?.takeIf { it.isNotBlank() } ?: localProperties.getProperty(property)?.takeIf { it.isNotBlank() }
+
+// Release signing. CI passes WEARLINK_KEYSTORE* variables (see .github/workflows/release.yml);
+// locally put signing.storeFile/storePassword/keyAlias/keyPassword into local.properties.
+// Updates install only over APKs signed with the same key.
+val releaseKeystore = secret("WEARLINK_KEYSTORE", "signing.storeFile")
+
+// CI passes the release version and run number; local builds use appVersion (gradle.properties) and 1.
+val appVersionCode = providers.gradleProperty("versionCode").orNull?.toIntOrNull() ?: 1
+val appVersionName = providers.gradleProperty("versionName").orNull ?: providers.gradleProperty("appVersion").get()
 
 android {
     namespace = "dev.wearlink.mobile"
@@ -19,18 +30,18 @@ android {
         applicationId = "dev.wearlink"
         minSdk = 29
         targetSdk = 36
-        versionCode = providers.gradleProperty("wearlink.versionCode").get().toInt()
-        versionName = providers.gradleProperty("wearlink.versionName").get()
+        versionCode = appVersionCode
+        versionName = appVersionName
         buildConfigField("String", "UPDATE_BASE_URL", "\"${providers.gradleProperty("wearlink.updateBaseUrl").get()}\"")
     }
 
     signingConfigs {
-        if (!keystoreProps.isEmpty) {
+        if (releaseKeystore != null) {
             create("release") {
-                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
-                storePassword = keystoreProps.getProperty("storePassword")
-                keyAlias = keystoreProps.getProperty("keyAlias")
-                keyPassword = keystoreProps.getProperty("keyPassword")
+                storeFile = rootProject.file(releaseKeystore)
+                storePassword = secret("WEARLINK_KEYSTORE_PASSWORD", "signing.storePassword")
+                keyAlias = secret("WEARLINK_KEY_ALIAS", "signing.keyAlias")
+                keyPassword = secret("WEARLINK_KEY_PASSWORD", "signing.keyPassword")
             }
         }
     }

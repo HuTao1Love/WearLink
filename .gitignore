@@ -9,4 +9,3 @@ core/libs/*.aar
 
 # Signing key: keep a backup, updates only install over APKs signed with the same key.
 keystore/
-keystore.properties

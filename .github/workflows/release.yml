@@ -1,23 +1,38 @@
-# Builds both APKs and publishes a GitHub release; the in-app updater reads update.json from it.
-#   git tag v1.2.0 && git push origin v1.2.0   (tag must match wearlink.versionName)
-# "Run workflow" by hand builds without publishing and attaches the APKs as an artifact.
-name: Release
+# Builds the signed phone and watch APKs and publishes them on GitHub.
+#
+# - Every push to main (each merged pull request) becomes a release tagged
+#   <appVersion from gradle.properties>.<run number>, e.g. 1.1.57, with the phone APK, the
+#   Wear OS watch APK and update.json, which the in-app updater reads from the latest release.
+# - A release published by hand (Releases -> Draft a new release) gets the APKs attached.
+# - Run by hand from the Actions tab: the APKs are kept as a workflow artifact.
+#
+# The versionCode is the run number plus 100 (above the hand-made 1.0.0/1.1.0 releases), so
+# every new build installs over the previous one.
+#
+# Needs these repository secrets (Settings -> Secrets and variables -> Actions):
+#   KEYSTORE_BASE64     the release keystore, base64-encoded
+#   KEYSTORE_PASSWORD   its password
+#   KEY_ALIAS           the key's alias
+#   KEY_PASSWORD        the key's password
+# Always sign with the same keystore: Android only installs an update signed with the same key.
+name: Release APK
 
 on:
   push:
-    tags: ["v*"]
+    branches: [main]
+  release:
+    types: [published]
   workflow_dispatch:
-    inputs:
-      publish:
-        description: "Publish a GitHub release"
-        type: boolean
-        default: false
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
+  apk:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
@@ -36,11 +51,8 @@ jobs:
           go-version: "1.25"
           cache: false
 
-      - name: Install NDK
-        run: |
-          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
-
+      # The sing-box core (libbox.aar) is built with gomobile and needs the NDK; it only changes
+      # with the sing-box tag or the build script, so it is cached.
       - name: Cache libbox
         id: libbox
         uses: actions/cache@v4
@@ -50,39 +62,81 @@ jobs:
 
       - name: Build libbox (sing-box core)
         if: steps.libbox.outputs.cache-hit != 'true'
-        run: bash scripts/build-libbox.sh
-
-      - name: Check tag matches version
-        if: startsWith(github.ref, 'refs/tags/')
         run: |
-          name=$(grep '^wearlink.versionName=' gradle.properties | cut -d= -f2)
-          [ "v$name" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != v$name in gradle.properties"; exit 1; }
-
-      - name: Signing key
-        env:
-          KEYSTORE_BASE64: ${{ secrets.WEARLINK_KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.WEARLINK_KEYSTORE_PASSWORD }}
-        run: |
-          mkdir -p keystore
-          echo "$KEYSTORE_BASE64" | base64 -d > keystore/wearlink.jks
-          printf 'storeFile=keystore/wearlink.jks\nstorePassword=%s\nkeyAlias=wearlink\nkeyPassword=%s\n' \
-            "$KEYSTORE_PASSWORD" "$KEYSTORE_PASSWORD" > keystore.properties
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
+          ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION" bash scripts/build-libbox.sh
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Build and publish
+      - name: Decode the keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::The KEYSTORE_BASE64 secret is missing; an unsigned APK can't be installed. See the top of this file."
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          echo "WEARLINK_KEYSTORE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Work out the version
+        run: |
+          BASE="$(sed -n 's/^appVersion=//p' gradle.properties | tr -d '[:space:]')"
+          case "${{ github.event_name }}" in
+            release) NAME="${{ github.event.release.tag_name }}"; NAME="${NAME#v}" ;;
+            *) NAME="${BASE:-1.1}.${{ github.run_number }}" ;;
+          esac
+          echo "VERSION_NAME=$NAME" >> "$GITHUB_ENV"
+          echo "VERSION_CODE=$(( ${{ github.run_number }} + 100 ))" >> "$GITHUB_ENV"
+
+      - name: Test and build
+        env:
+          WEARLINK_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          WEARLINK_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          WEARLINK_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        # A bigger heap for R8; lintVitalRelease only slows the runner down.
+        run: |
+          chmod +x gradlew
+          ./gradlew :shared:test :mobile:assembleRelease :wear:assembleRelease \
+            -x lintVitalRelease \
+            "-Dorg.gradle.jvmargs=-Xmx6g -XX:+UseParallelGC -Dfile.encoding=UTF-8" \
+            -PversionName="$VERSION_NAME" \
+            -PversionCode="$VERSION_CODE"
+          mkdir -p dist
+          PHONE="WearLink-$VERSION_NAME.apk"
+          WATCH="WearLink-Watch-$VERSION_NAME.apk"
+          cp mobile/build/outputs/apk/release/mobile-release.apk "dist/$PHONE"
+          cp wear/build/outputs/apk/release/wear-release.apk "dist/$WATCH"
+          # The in-app updater reads this from releases/latest/download/update.json.
+          jq -n \
+            --argjson code "$VERSION_CODE" --arg name "$VERSION_NAME" \
+            --arg phone "$PHONE" --arg watch "$WATCH" \
+            --arg phoneSha "$(sha256sum "dist/$PHONE" | cut -d' ' -f1)" \
+            --arg watchSha "$(sha256sum "dist/$WATCH" | cut -d' ' -f1)" \
+            --arg notes "${{ github.event.head_commit.message }}" \
+            '{versionCode: $code, versionName: $name, notes: ($notes | split("\n")[0]),
+              phoneApk: $phone, watchApk: $watch, phoneSha256: $phoneSha, watchSha256: $watchSha}' \
+            > dist/update.json
+
+      - name: Attach the APKs to the release
+        if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
-          WEARLINK_REPO: ${{ github.repository }}
-        run: |
-          notes=$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" 2>/dev/null || true)
-          if [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.publish }}" = "true" ]; then
-            bash scripts/release.sh "${notes:-}"
-          else
-            bash scripts/release.sh --local "${notes:-}"
-          fi
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/* --clobber
 
-      - uses: actions/upload-artifact@v4
+      - name: Publish a release for the push to main
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$VERSION_NAME" dist/* \
+            --target "${{ github.sha }}" \
+            --title "WearLink $VERSION_NAME" \
+            --generate-notes
+
+      - name: Keep the APKs as an artifact
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
         with:
-          name: wearlink-apks
-          path: build/release/
+          name: WearLink-${{ env.VERSION_NAME }}
+          path: dist/

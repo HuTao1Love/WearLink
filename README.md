@@ -18,14 +18,14 @@ VPN-клиент для Android-телефона и часов на Wear OS (Gal
 
 ```bash
 bash scripts/build-libbox.sh            # один раз: собирает core/libs/libbox.aar (sing-box v1.14.2; arm64, armeabi-v7a, x86_64)
-./gradlew :shared:test assembleRelease  # тесты + оба APK для устройств
+./gradlew :shared:test assembleRelease  # тесты + оба APK для устройств (локально версия <appVersion>, versionCode 1)
 ```
 
 APK для устройств: `mobile/build/outputs/apk/release/mobile-release.apk` (arm64), `wear/build/outputs/apk/release/wear-release.apk` (armeabi-v7a + arm64: у Galaxy Watch 8 64-битный процессор, но 32-битная система).
 `assembleDebug` дополнительно кладёт x86_64 для эмуляторов.
 У обоих один `applicationId` (`dev.wearlink`) и одна подпись — без этого Data Layer не свяжет телефон и часы.
 
-**Ключ подписи** — `keystore/wearlink.jks` + `keystore.properties` (оба в `.gitignore`). Сделайте резервную копию: обновления ставятся только поверх APK, подписанных этим же ключом. Без `keystore.properties` сборка подписывается debug-ключом.
+**Ключ подписи** — `keystore/wearlink.jks` (в `.gitignore`), пароли — `signing.*` в `local.properties`. Сделайте резервную копию: обновления ставятся только поверх APK, подписанных этим же ключом. Без `signing.storeFile` сборка подписывается debug-ключом.
 
 ## Обновления
 
@@ -36,27 +36,17 @@ APK для устройств: `mobile/build/outputs/apk/release/mobile-release.
 * Первый раз Android попросит разрешить установку из WearLink и подтвердить обновление. Дальше, поскольку установщиком становится сам WearLink, на Android 12+ обновления ставятся без вопросов.
 * Загрузка докачивается при обрывах (Range), на часах экран не гаснет, пока идёт загрузка.
 
-**Релизы:** https://github.com/HuTao1Love/WearLink/releases — там лежат `wearlink-phone.apk`, `wearlink-watch.apk` и `update.json`.
+**Релизы:** https://github.com/HuTao1Love/WearLink/releases — в каждом `WearLink-<версия>.apk` (телефон), `WearLink-Watch-<версия>.apk` (часы) и `update.json` для встроенного обновления.
 
-Выпуск версии через GitHub Actions (собирает ядро и оба APK, подписывает ключом из секретов `WEARLINK_KEYSTORE_BASE64` / `WEARLINK_KEYSTORE_PASSWORD` и публикует релиз):
+Выпуск — как в BookSound, через GitHub Actions (`.github/workflows/release.yml`):
 
-```bash
-# поднять wearlink.versionCode и wearlink.versionName в gradle.properties, закоммитить, затем:
-git tag -a v1.2.0 -m "Что нового" && git push origin v1.2.0
-```
+* каждый пуш в `main` (каждый смёрженный PR) публикуется как релиз `<appVersion>.<номер сборки>`, например `1.1.57`, с автоматическими заметками; `appVersion` — в `gradle.properties`, поднимайте его для новой мажорной/минорной версии;
+* релиз, созданный вручную (Releases → Draft a new release), получает APK;
+* ручной запуск workflow в Actions собирает APK без публикации (артефакт);
+* `versionCode` = номер сборки + 100, поэтому каждая сборка ставится поверх предыдущей;
+* подпись — секреты `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD`; локально — `signing.storeFile` / `signing.storePassword` / `signing.keyAlias` / `signing.keyPassword` в `local.properties`.
 
-Ручной запуск workflow «Release» в Actions собирает APK без публикации (артефакт `wearlink-apks`).
-
-Выпуск с локальной машины:
-
-```bash
-# 1. поднять wearlink.versionCode и wearlink.versionName в gradle.properties
-# 2. собрать, посчитать sha256 и опубликовать релиз через gh
-bash scripts/release.sh "Что нового"
-bash scripts/release.sh --local "..."   # только собрать в build/release
-```
-
-Для проверки на эмуляторе: `-Pwearlink.updateBaseUrl=http://10.0.2.2:8765/` и любой локальный HTTP-сервер (debug-сборки разрешают HTTP только до `10.0.2.2`).
+Для проверки обновлений на эмуляторе: `-Pwearlink.updateBaseUrl=http://10.0.2.2:8765/ -PversionCode=…` и любой локальный HTTP-сервер (debug-сборки разрешают HTTP только до `10.0.2.2`).
 
 ## Установка на часы
 
