@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shown in the tile picker: a green power button on black. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="oval">
+            <solid android:color="#FF000000" />
+            <size android:width="192dp" android:height="192dp" />
+        </shape>
+    </item>
+    <item android:gravity="center" android:width="84dp" android:height="84dp">
+        <shape android:shape="oval">
+            <solid android:color="#FF2E7D32" />
+        </shape>
+    </item>
+    <item android:drawable="@drawable/ic_wearlink" android:gravity="center" android:width="40dp" android:height="40dp" />
+</layer-list>

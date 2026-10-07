@@ -1,0 +1,96 @@
+# WearLink
+
+VPN-клиент для Android-телефона и часов на Wear OS (Galaxy Watch 8). Ядро — sing-box (libbox). Протоколы: VLESS (Reality / Vision / TLS), VMess, Trojan, Shadowsocks (в т.ч. 2022, obfs/v2ray-plugin), Hysteria2, Hysteria, TUIC v5, AnyTLS; транспорты WS / gRPC / HTTP/2 / HTTPUpgrade.
+
+| Модуль | Что внутри |
+|---|---|
+| `shared` | Разбор ссылок (`vless`, `vmess`, `trojan`, `ss`, `hysteria2`/`hy2`, `hysteria`, `tuic`, `anytls`), подписок (base64 / plain, заголовки `profile-title`, `subscription-userinfo`), генератор конфига sing-box, протокол телефон → часы |
+| `core` | VpnService на libbox, хранилище, импорт, обновление подписок, переключатель, самообновление из GitHub Releases |
+| `mobile` | Приложение для телефона: кнопка в шторке быстрых настроек, серверы, выбор приложений, добавление (вставка / «Поделиться» / QR), отправка на часы |
+| `wear` | Приложение для часов: плитка-переключатель, серверы, выбор приложений, приём ссылок с телефона |
+
+## Сборка
+
+Нужны: Android SDK (platform 37, NDK 28.2), Go 1.25+, JDK из Android Studio.
+
+```bash
+bash scripts/build-libbox.sh            # один раз: собирает core/libs/libbox.aar (sing-box v1.14.2)
+./gradlew :shared:test assembleRelease  # тесты + оба APK для устройств (arm64, ~23 МБ)
+```
+
+APK для устройств: `mobile/build/outputs/apk/release/mobile-release.apk`, `wear/build/outputs/apk/release/wear-release.apk`.
+`assembleDebug` дополнительно кладёт x86_64 для эмуляторов.
+У обоих один `applicationId` (`dev.wearlink`) и одна подпись — без этого Data Layer не свяжет телефон и часы.
+
+**Ключ подписи** — `keystore/wearlink.jks` + `keystore.properties` (оба в `.gitignore`). Сделайте резервную копию: обновления ставятся только поверх APK, подписанных этим же ключом. Без `keystore.properties` сборка подписывается debug-ключом.
+
+## Обновления
+
+Приложение берёт `update.json` и APK из последнего релиза `HuTao1Love/WearLink` (адрес — `wearlink.updateBaseUrl` в `gradle.properties`).
+
+* Телефон: главный экран → «Обновить телефон и часы». Телефон отправляет часам команду, часы скачивают свой APK сами (фоновая задача с уведомлением), потом ставится телефон.
+* Часы: пункт «Обновление» в главном меню (тап — проверить, второй тап — установить).
+* Первый раз Android попросит разрешить установку из WearLink и подтвердить обновление. Дальше, поскольку установщиком становится сам WearLink, на Android 12+ обновления ставятся без вопросов.
+* Загрузка докачивается при обрывах (Range), на часах экран не гаснет, пока идёт загрузка.
+
+Выпуск версии:
+
+```bash
+# 1. поднять wearlink.versionCode и wearlink.versionName в gradle.properties
+# 2. собрать, посчитать sha256 и опубликовать релиз через gh
+bash scripts/release.sh "Что нового"
+bash scripts/release.sh --local "..."   # только собрать в build/release
+```
+
+Для проверки на эмуляторе: `-Pwearlink.updateBaseUrl=http://10.0.2.2:8765/` и любой локальный HTTP-сервер (debug-сборки разрешают HTTP только до `10.0.2.2`).
+
+## Установка на часы
+
+1. На часах: Настройки → О часах → Программное обеспечение → 5 раз по «Версия ПО» (режим разработчика).
+2. Параметры разработчика → «Отладка по ADB» и «Беспроводная отладка» → «Подключить новое устройство».
+3. На компьютере:
+   ```bash
+   adb pair <ip>:<порт-сопряжения>
+   adb connect <ip>:<порт>
+   adb install wear/build/outputs/apk/release/wear-release.apk
+   ```
+4. Добавить плитку WearLink VPN: долгое нажатие на циферблат → плитки → «+».
+
+## Часы: режим прокси
+
+На часах нет системной службы VPN (`vpn_management`). Её нет ни на эмуляторе Wear OS 6, ни на Galaxy Watch 8 (SM-L335F, Android 16), поэтому обычный VPN там невозможен. Приложение само определяет это и включает **режим прокси**:
+
+* sing-box поднимает HTTP/SOCKS-прокси на `127.0.0.1:10808`, и он прописывается системным прокси часов (`Settings.Global.HTTP_PROXY`);
+* через него идут приложения, которые уважают системный прокси: системные службы Google, OkHttp, WebView и большинство обычных приложений; DNS-запросы тоже уходят на сервер, домен передаётся прокси;
+* не идут UDP/QUIC и приложения с собственными сокетами; выбрать отдельные приложения нельзя.
+
+Один раз выдать разрешение (часы подключены по adb):
+
+```bash
+adb shell pm grant dev.wearlink android.permission.WRITE_SECURE_SETTINGS
+```
+
+После этого плитка включает и выключает прокси. При выключении, перезагрузке или следующем запуске приложения прокси снимается, чтобы часы не остались без интернета. Если интернет на часах пропал (например, систему пришлось убить WearLink), откройте WearLink или выполните:
+
+```bash
+adb shell settings put global http_proxy :0
+```
+
+Проверить, есть ли на часах VPN-служба (если появится, приложение само переключится на обычный VPN):
+
+```bash
+adb shell service list | grep vpn_management
+```
+
+## Проверка
+
+* `./gradlew :shared:test` — парсеры и генератор конфига; примеры конфигов пишутся в `shared/build/sample-configs/` и проверяются `sing-box check -c <файл>`.
+* На эмуляторе телефона проверено: импорт по ссылке, Hysteria2 и VLESS Reality+Vision через локальный sing-box-сервер, смена сервера на лету, кнопка в шторке, режим «только выбранные приложения».
+* На эмуляторах телефона и часов проверено самообновление 1.0.0 → 1.0.1 с локального сервера.
+* На эмуляторе часов проверен режим прокси: без разрешения не включается, с разрешением трафик приложения и служб Google идёт через VLESS Reality, при выключении и после убийства процесса прокси снимается.
+* Отладочный импорт на часы без телефона:
+  `adb shell am start -a android.intent.action.VIEW -d "'vless://…'" dev.wearlink`
+
+## Не поддерживается
+
+xhttp-транспорт (его нет в sing-box), `encryption` ≠ none у VLESS, TCP с HTTP-обфускацией, Hysteria с faketcp, зашифрованные ссылки `happ://crypt…`, WireGuard / SSR / Naive (видны в списке серым).
