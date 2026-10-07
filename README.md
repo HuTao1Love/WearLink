@@ -36,7 +36,18 @@ APK для устройств: `mobile/build/outputs/apk/release/mobile-release.
 * Первый раз Android попросит разрешить установку из WearLink и подтвердить обновление. Дальше, поскольку установщиком становится сам WearLink, на Android 12+ обновления ставятся без вопросов.
 * Загрузка докачивается при обрывах (Range), на часах экран не гаснет, пока идёт загрузка.
 
-Выпуск версии:
+**Релизы:** https://github.com/HuTao1Love/WearLink/releases — там лежат `wearlink-phone.apk`, `wearlink-watch.apk` и `update.json`.
+
+Выпуск версии через GitHub Actions (собирает ядро и оба APK, подписывает ключом из секретов `WEARLINK_KEYSTORE_BASE64` / `WEARLINK_KEYSTORE_PASSWORD` и публикует релиз):
+
+```bash
+# поднять wearlink.versionCode и wearlink.versionName в gradle.properties, закоммитить, затем:
+git tag -a v1.2.0 -m "Что нового" && git push origin v1.2.0
+```
+
+Ручной запуск workflow «Release» в Actions собирает APK без публикации (артефакт `wearlink-apks`).
+
+Выпуск с локальной машины:
 
 ```bash
 # 1. поднять wearlink.versionCode и wearlink.versionName в gradle.properties

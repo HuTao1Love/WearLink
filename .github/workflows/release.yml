@@ -1,0 +1,88 @@
+# Builds both APKs and publishes a GitHub release; the in-app updater reads update.json from it.
+#   git tag v1.2.0 && git push origin v1.2.0   (tag must match wearlink.versionName)
+# "Run workflow" by hand builds without publishing and attaches the APKs as an artifact.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a GitHub release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      SING_BOX_TAG: v1.14.2
+      NDK_VERSION: 28.2.13676358
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: false
+
+      - name: Install NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: Cache libbox
+        id: libbox
+        uses: actions/cache@v4
+        with:
+          path: core/libs/libbox.aar
+          key: libbox-${{ env.SING_BOX_TAG }}-${{ hashFiles('scripts/build-libbox.sh') }}
+
+      - name: Build libbox (sing-box core)
+        if: steps.libbox.outputs.cache-hit != 'true'
+        run: bash scripts/build-libbox.sh
+
+      - name: Check tag matches version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          name=$(grep '^wearlink.versionName=' gradle.properties | cut -d= -f2)
+          [ "v$name" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != v$name in gradle.properties"; exit 1; }
+
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.WEARLINK_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.WEARLINK_KEYSTORE_PASSWORD }}
+        run: |
+          mkdir -p keystore
+          echo "$KEYSTORE_BASE64" | base64 -d > keystore/wearlink.jks
+          printf 'storeFile=keystore/wearlink.jks\nstorePassword=%s\nkeyAlias=wearlink\nkeyPassword=%s\n' \
+            "$KEYSTORE_PASSWORD" "$KEYSTORE_PASSWORD" > keystore.properties
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WEARLINK_REPO: ${{ github.repository }}
+        run: |
+          notes=$(git tag -l --format='%(contents)' "$GITHUB_REF_NAME" 2>/dev/null || true)
+          if [ "${{ github.event_name }}" = "push" ] || [ "${{ inputs.publish }}" = "true" ]; then
+            bash scripts/release.sh "${notes:-}"
+          else
+            bash scripts/release.sh --local "${notes:-}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wearlink-apks
+          path: build/release/

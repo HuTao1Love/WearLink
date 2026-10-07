@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Builds signed release APKs and publishes them as a GitHub release; the in-app updater
 # reads update.json from releases/latest. Bump wearlink.versionCode/versionName in
-# gradle.properties first.
+# gradle.properties first. CI (.github/workflows/release.yml) runs this on every v* tag.
 #
 #   scripts/release.sh "Что нового"          build + publish
 #   scripts/release.sh --local "Что нового"  build into build/release only
