@@ -25,7 +25,7 @@ LDFLAGS="-X github.com/sagernet/sing-box/constant.Version=${SING_BOX_TAG#v} -X r
 
 gomobile bind -v \
   -o libbox.aar \
-  -target "${LIBBOX_TARGETS:-android/arm64,android/amd64}" \
+  -target "${LIBBOX_TARGETS:-android/arm64,android/arm,android/amd64}" \
   -androidapi 24 \
   -javapkg=io.nekohasekai \
   -libname=box \

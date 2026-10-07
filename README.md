@@ -17,11 +17,11 @@ VPN-клиент для Android-телефона и часов на Wear OS (Gal
 Нужны: Android SDK (platform 37, NDK 28.2), Go 1.25+, JDK из Android Studio.
 
 ```bash
-bash scripts/build-libbox.sh            # один раз: собирает core/libs/libbox.aar (sing-box v1.14.2)
-./gradlew :shared:test assembleRelease  # тесты + оба APK для устройств (arm64, ~23 МБ)
+bash scripts/build-libbox.sh            # один раз: собирает core/libs/libbox.aar (sing-box v1.14.2; arm64, armeabi-v7a, x86_64)
+./gradlew :shared:test assembleRelease  # тесты + оба APK для устройств
 ```
 
-APK для устройств: `mobile/build/outputs/apk/release/mobile-release.apk`, `wear/build/outputs/apk/release/wear-release.apk`.
+APK для устройств: `mobile/build/outputs/apk/release/mobile-release.apk` (arm64), `wear/build/outputs/apk/release/wear-release.apk` (armeabi-v7a + arm64: у Galaxy Watch 8 64-битный процессор, но 32-битная система).
 `assembleDebug` дополнительно кладёт x86_64 для эмуляторов.
 У обоих один `applicationId` (`dev.wearlink`) и одна подпись — без этого Data Layer не свяжет телефон и часы.
 

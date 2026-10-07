@@ -39,15 +39,15 @@ android {
     buildTypes {
         debug {
             signingConfig = appSigning
-            // arm64 for real devices, x86_64 for the emulators.
-            ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+            // Real watches plus x86_64 for the emulators.
+            ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64") }
         }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             signingConfig = appSigning
-            // Real phones and the Galaxy Watch are arm64.
-            ndk { abiFilters += "arm64-v8a" }
+            // Galaxy Watch 8 runs a 32-bit userspace (armeabi-v7a) on its 64-bit CPU; keep arm64 for other watches.
+            ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
         }
     }
 
