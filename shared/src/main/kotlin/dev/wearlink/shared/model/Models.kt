@@ -103,6 +103,21 @@ data class Hysteria1Config(
     val tls: Security.Tls = Security.Tls(),
 ) : ProxyConfig
 
+/**
+ * An outbound copied verbatim from a sing-box JSON subscription. Keeping the provider's JSON
+ * avoids losing options we do not model (uTLS, multiplex, padding...).
+ */
+@Serializable
+@SerialName("singbox")
+data class SingBoxOutbound(
+    override val host: String,
+    override val port: Int,
+    /** sing-box outbound type ("vless", "hysteria2", ...); not `type`, which is the serial discriminator. */
+    val outboundType: String,
+    val json: String,
+    val label: String,
+) : ProxyConfig
+
 @Serializable
 sealed interface Transport {
     @Serializable
@@ -186,6 +201,7 @@ data class Server(
             is VmessConfig -> if (config.security is Security.None) "VMess" else "VMess TLS"
             is TuicConfig -> "TUIC"
             is AnyTlsConfig -> "AnyTLS"
+            is SingBoxOutbound -> config.label
             null -> link.substringBefore("://").uppercase()
         }
 }

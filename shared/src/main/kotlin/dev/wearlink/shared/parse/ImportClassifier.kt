@@ -10,7 +10,7 @@ sealed interface ImportInput {
 object ImportClassifier {
 
     private val httpUrl = Regex("https?://[^\\s\"'<>]+", RegexOption.IGNORE_CASE)
-    private val linkStart = Regex("\\b(vless|vmess|trojan|ss|hysteria2|hy2|hysteria|tuic|anytls)://", RegexOption.IGNORE_CASE)
+    private val linkStart = Regex("\\b(vless|vmess|trojan|ss|hysteria2|hy2|hysteria|tuic|anytls|sbox)://", RegexOption.IGNORE_CASE)
 
     fun classify(input: String): ImportInput {
         val text = input.trim()

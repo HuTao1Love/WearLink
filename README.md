@@ -7,7 +7,7 @@ VPN-клиент для Android-телефона и часов на Wear OS (Gal
 
 | Модуль | Что внутри |
 |---|---|
-| `shared` | Разбор ссылок (`vless`, `vmess`, `trojan`, `ss`, `hysteria2`/`hy2`, `hysteria`, `tuic`, `anytls`), подписок (base64 / plain, заголовки `profile-title`, `subscription-userinfo`), генератор конфига sing-box, протокол телефон → часы |
+| `shared` | Разбор ссылок (`vless`, `vmess`, `trojan`, `ss`, `hysteria2`/`hy2`, `hysteria`, `tuic`, `anytls`), подписок (списки ссылок, а также JSON-конфиги sing-box и Xray) (base64 / plain, заголовки `profile-title`, `subscription-userinfo`), генератор конфига sing-box, протокол телефон → часы |
 | `core` | VpnService на libbox, хранилище, импорт, обновление подписок, переключатель, самообновление из GitHub Releases |
 | `mobile` | Приложение для телефона: кнопка в шторке быстрых настроек, серверы, выбор приложений, добавление (вставка / «Поделиться» / QR), отправка на часы |
 | `wear` | Приложение для часов: плитка-переключатель, серверы, выбор приложений, приём ссылок с телефона |
