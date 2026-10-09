@@ -7,6 +7,7 @@ import dev.wearlink.shared.model.ProxyConfig
 import dev.wearlink.shared.model.Security
 import dev.wearlink.shared.model.Server
 import dev.wearlink.shared.model.ShadowsocksConfig
+import dev.wearlink.shared.model.SingBoxOutbound
 import dev.wearlink.shared.model.Transport
 import dev.wearlink.shared.model.TrojanConfig
 import dev.wearlink.shared.model.TuicConfig
@@ -21,7 +22,7 @@ import java.security.MessageDigest
 /** Parses proxy share links (vless, vmess, trojan, ss, hysteria/hysteria2, tuic, anytls) into [Server] entries. */
 object LinkParser {
 
-    private val SUPPORTED = setOf("vless", "vmess", "trojan", "ss", "hysteria2", "hy2", "hysteria", "tuic", "anytls")
+    private val SUPPORTED = setOf("vless", "vmess", "trojan", "ss", "hysteria2", "hy2", "hysteria", "tuic", "anytls", JsonSubscription.SING_BOX_SCHEME)
     private val KNOWN = SUPPORTED + setOf("ssr", "wireguard", "socks", "naive+https")
 
     /** True when [line] looks like a proxy share link (supported or not). */
@@ -31,6 +32,8 @@ object LinkParser {
         val trimmed = link.trim()
         val id = stableId(trimmed, subscriptionId)
         val scheme = trimmed.substringBefore("://", "").lowercase()
+
+        if (scheme == JsonSubscription.SING_BOX_SCHEME) return parseSingBoxOutbound(trimmed, id, subscriptionId)
 
         // Classic vmess is base64 JSON rather than a URI.
         if (scheme == "vmess") {
@@ -67,6 +70,47 @@ object LinkParser {
             Server(id, name, trimmed, config = config, subscriptionId = subscriptionId)
         } catch (e: UnsupportedLinkException) {
             Server(id, raw.fragment.ifBlank { fallbackName }, trimmed, error = e.message, subscriptionId = subscriptionId)
+        }
+    }
+
+    /** sbox://base64url(outbound JSON)#name, produced by [JsonSubscription] for sing-box configs. */
+    private fun parseSingBoxOutbound(link: String, id: String, subscriptionId: String?): Server {
+        val name = RawUri.percentDecode(link.substringAfter('#', "")).ifBlank { "sing-box" }
+        return try {
+            val payload = link.substringAfter("://").substringBefore('#')
+            val text = String(java.util.Base64.getUrlDecoder().decode(payload), Charsets.UTF_8)
+            val obj = Json.parseToJsonElement(text).jsonObject
+            fun field(key: String) = (obj[key] as? JsonPrimitive)?.content
+            val type = field("type") ?: throw UnsupportedLinkException("Нет типа outbound")
+            val tls = obj["tls"] as? kotlinx.serialization.json.JsonObject
+            val security = when {
+                tls?.get("reality") != null -> " Reality"
+                tls != null && type in setOf("vless", "vmess", "trojan") -> " TLS"
+                else -> ""
+            }
+            val label = when (type) {
+                "vless" -> "VLESS"
+                "vmess" -> "VMess"
+                "trojan" -> "Trojan"
+                "shadowsocks" -> "Shadowsocks"
+                "hysteria2" -> "Hysteria2"
+                "hysteria" -> "Hysteria"
+                "tuic" -> "TUIC"
+                "anytls" -> "AnyTLS"
+                else -> type
+            } + security
+            val config = SingBoxOutbound(
+                host = field("server") ?: throw UnsupportedLinkException("Нет адреса сервера"),
+                port = field("server_port")?.toIntOrNull() ?: throw UnsupportedLinkException("Некорректный порт"),
+                outboundType = type,
+                json = text,
+                label = label,
+            )
+            Server(id, name, link, config = config, subscriptionId = subscriptionId)
+        } catch (e: UnsupportedLinkException) {
+            Server(id, name, link, error = e.message, subscriptionId = subscriptionId)
+        } catch (e: IllegalArgumentException) {
+            Server(id, name, link, error = "Некорректный outbound sing-box", subscriptionId = subscriptionId)
         }
     }
 

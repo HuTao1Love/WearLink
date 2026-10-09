@@ -8,6 +8,7 @@ import dev.wearlink.shared.model.ProxyConfig
 import dev.wearlink.shared.model.RoutingMode
 import dev.wearlink.shared.model.Security
 import dev.wearlink.shared.model.ShadowsocksConfig
+import dev.wearlink.shared.model.SingBoxOutbound
 import dev.wearlink.shared.model.Transport
 import dev.wearlink.shared.model.TrojanConfig
 import dev.wearlink.shared.model.TuicConfig
@@ -16,6 +17,8 @@ import dev.wearlink.shared.model.VmessConfig
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonObjectBuilder
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.addJsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -206,6 +209,9 @@ object SingBoxConfig {
         is Hysteria1Config -> hysteria1(proxy)
         is TuicConfig -> tuic(proxy)
         is AnyTlsConfig -> anyTls(proxy)
+        is SingBoxOutbound -> JsonObject(
+            Json.parseToJsonElement(proxy.json).jsonObject + ("tag" to JsonPrimitive(PROXY_TAG)),
+        )
     }
 
     private fun JsonObjectBuilder.putServer(type: String, proxy: ProxyConfig) {

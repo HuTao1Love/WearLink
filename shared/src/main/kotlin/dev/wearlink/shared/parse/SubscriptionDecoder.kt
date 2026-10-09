@@ -24,6 +24,9 @@ object SubscriptionDecoder {
      * [headers] keys are matched case-insensitively.
      */
     fun decode(body: String, headers: Map<String, String> = emptyMap()): DecodedSubscription {
+        if (JsonSubscription.isJson(body)) {
+            return DecodedSubscription(JsonSubscription.links(body), parseInfo(headers.mapKeys { it.key.lowercase() }))
+        }
         val text = decodeBodyText(body)
         val lines = text.lines().map { it.trim() }.filter { it.isNotEmpty() }
 
