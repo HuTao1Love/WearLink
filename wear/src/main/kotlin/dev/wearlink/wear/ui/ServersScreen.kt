@@ -25,6 +25,8 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import dev.wearlink.core.WearLinkCore
 import dev.wearlink.core.data.Format
+import dev.wearlink.core.data.PingResult
+import dev.wearlink.core.data.ServerPing
 import dev.wearlink.shared.model.Server
 import kotlinx.coroutines.launch
 
@@ -34,11 +36,22 @@ fun ServersScreen(onDelete: (String) -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val data by WearLinkCore.store.data.collectAsState()
+    val pings by ServerPing.results.collectAsState()
     val listState = rememberScalingLazyListState()
 
     ScreenScaffold(scrollState = listState) { contentPadding ->
         ScalingLazyColumn(state = listState, contentPadding = contentPadding, modifier = Modifier.fillMaxWidth()) {
             item { ListHeader { Text("Серверы") } }
+            if (data.servers.isNotEmpty()) {
+                item {
+                    Button(
+                        onClick = { scope.launch { ServerPing.ping(context, data.servers) } },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.filledTonalButtonColors(),
+                        label = { Text("Проверить пинг") },
+                    )
+                }
+            }
             if (data.servers.isEmpty()) {
                 item {
                     Text(
@@ -68,15 +81,18 @@ fun ServersScreen(onDelete: (String) -> Unit) {
                         secondaryLabel = details.takeIf { it.isNotEmpty() }?.let { { Text(it.joinToString(" · "), maxLines = 2) } },
                     )
                 }
+                data.autoServer(subscription.id)?.let { auto ->
+                    item(key = auto.id) { ServerButton(auto, auto.id == data.selectedServerId, ping = null, onDelete = null) }
+                }
                 items(data.serversOf(subscription.id), key = { it.id }) { server ->
-                    ServerButton(server, server.id == data.selectedServerId, onDelete = null)
+                    ServerButton(server, server.id == data.selectedServerId, pings[server.id], onDelete = null)
                 }
             }
             val single = data.serversOf(null)
             if (single.isNotEmpty()) {
                 item(key = "single") { ListHeader { Text("Отдельные") } }
                 items(single, key = { it.id }) { server ->
-                    ServerButton(server, server.id == data.selectedServerId, onDelete = { onDelete(server.id) })
+                    ServerButton(server, server.id == data.selectedServerId, pings[server.id], onDelete = { onDelete(server.id) })
                 }
             }
         }
@@ -84,7 +100,7 @@ fun ServersScreen(onDelete: (String) -> Unit) {
 }
 
 @Composable
-private fun ServerButton(server: Server, selected: Boolean, onDelete: (() -> Unit)?) {
+private fun ServerButton(server: Server, selected: Boolean, ping: PingResult?, onDelete: (() -> Unit)?) {
     val scope = rememberCoroutineScope()
     Button(
         onClick = { scope.launch { WearLinkCore.store.select(server.id) } },
@@ -99,6 +115,15 @@ private fun ServerButton(server: Server, selected: Boolean, onDelete: (() -> Uni
             null
         },
         label = { Text(server.name, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-        secondaryLabel = { Text(server.error ?: server.protocolLabel, maxLines = 1) },
+        secondaryLabel = {
+            val pingText = when (ping) {
+                null -> null
+                PingResult.Testing -> "…"
+                PingResult.Failed -> "нет ответа"
+                PingResult.Udp -> null
+                is PingResult.Ok -> "${ping.ms} мс"
+            }
+            Text(listOfNotNull(server.error ?: server.protocolLabel, pingText).joinToString(" · "), maxLines = 2)
+        },
     )
 }

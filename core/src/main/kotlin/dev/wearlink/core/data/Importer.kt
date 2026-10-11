@@ -1,6 +1,7 @@
 package dev.wearlink.core.data
 
 import android.net.Uri
+import dev.wearlink.shared.model.Server
 import dev.wearlink.shared.model.Subscription
 import dev.wearlink.shared.parse.ImportClassifier
 import dev.wearlink.shared.parse.ImportInput
@@ -87,10 +88,15 @@ class Importer(private val store: Store) {
             } else {
                 data.subscriptions + subscription
             }
-            data.copy(
+            val updated = data.copy(
                 subscriptions = subscriptions,
                 servers = data.servers.filterNot { it.subscriptionId == id } + servers,
-            ).withValidSelection(previous = data.servers.firstOrNull { it.id == data.selectedServerId })
+            )
+            if (data.selectedServer == null && updated.autoServer(id) != null) {
+                updated.copy(selectedServerId = Server.autoId(id))
+            } else {
+                updated.withValidSelection(previous = data.servers.firstOrNull { it.id == data.selectedServerId })
+            }
         }
         return ImportOutcome(added, title, url, fetched)
     }

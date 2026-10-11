@@ -9,6 +9,7 @@ import android.os.Build
 import android.util.Log
 import dev.wearlink.core.WearLinkCore
 import dev.wearlink.core.data.SubscriptionFetcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -83,6 +84,10 @@ object Updater {
                 _state.value = UpdateState.UpToDate(currentVersionName(context))
                 null
             }
+        } catch (e: CancellationException) {
+            // The screen that asked went away (e.g. another tab); not an error.
+            _state.value = UpdateState.Idle
+            throw e
         } catch (e: Exception) {
             _state.value = UpdateState.Error("Не удалось проверить обновления: ${e.message ?: e.javaClass.simpleName}")
             null

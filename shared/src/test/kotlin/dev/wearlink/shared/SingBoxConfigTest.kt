@@ -2,6 +2,7 @@ package dev.wearlink.shared
 
 import dev.wearlink.shared.model.AppRouting
 import dev.wearlink.shared.model.RoutingMode
+import dev.wearlink.shared.model.UrlTestGroup
 import dev.wearlink.shared.parse.LinkParser
 import dev.wearlink.shared.singbox.Inbound
 import dev.wearlink.shared.singbox.SingBoxConfig
@@ -72,6 +73,20 @@ class SingBoxConfigTest {
         File("build/sample-configs/local-proxy.json").writeText(
             SingBoxConfig.build(LinkParser.parse(Samples.HY2).config!!, AppRouting(), own, Inbound.LocalProxy(10808)),
         )
+    }
+
+    @Test
+    fun autoSelectBuildsUrlTestOverAllMembers() {
+        val members = listOf(Samples.VLESS_REALITY, Samples.HY2, Samples.VLESS_WS).map { LinkParser.parse(it).config!! }
+        val config = SingBoxConfig.buildObject(UrlTestGroup(members), AppRouting(), own)
+        val outbounds = config["outbounds"]!!.jsonArray.map { it.jsonObject }
+        val group = outbounds.first()
+        assertEquals("urltest", group["type"]!!.jsonPrimitive.content)
+        assertEquals("proxy", group["tag"]!!.jsonPrimitive.content)
+        assertEquals(listOf("proxy-0", "proxy-1", "proxy-2"), strings(group["outbounds"]))
+        assertEquals(listOf("proxy-0", "proxy-1", "proxy-2", "direct"), outbounds.drop(1).map { it["tag"]!!.jsonPrimitive.content })
+        File("build/sample-configs").mkdirs()
+        File("build/sample-configs/auto-select.json").writeText(SingBoxConfig.build(UrlTestGroup(members), AppRouting(), own))
     }
 
     /** Writes sample configs so they can be validated with `sing-box check` (see README). */
