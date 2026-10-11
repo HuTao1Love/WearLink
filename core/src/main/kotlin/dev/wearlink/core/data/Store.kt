@@ -7,6 +7,7 @@ import dev.wearlink.shared.model.AppRouting
 import dev.wearlink.shared.model.ListRouting
 import dev.wearlink.shared.model.Server
 import dev.wearlink.shared.model.Subscription
+import dev.wearlink.shared.model.UrlTestGroup
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +28,24 @@ data class AppData(
     val lists: ListRouting = ListRouting(),
 ) {
     val selectedServer: Server?
-        get() = servers.firstOrNull { it.id == selectedServerId && it.isUsable }
+        get() {
+            val id = selectedServerId ?: return null
+            if (id.startsWith(Server.AUTO_PREFIX)) return autoServer(id.removePrefix(Server.AUTO_PREFIX))
+            return servers.firstOrNull { it.id == id && it.isUsable }
+        }
+
+    /** The subscription's "auto select" entry; needs at least two usable servers to choose from. */
+    fun autoServer(subscriptionId: String): Server? {
+        val members = serversOf(subscriptionId).filter { it.isUsable }.mapNotNull { it.config }
+        if (members.size < 2) return null
+        return Server(
+            id = Server.autoId(subscriptionId),
+            name = Server.AUTO_NAME,
+            link = "",
+            config = UrlTestGroup(members),
+            subscriptionId = subscriptionId,
+        )
+    }
 
     fun serversOf(subscriptionId: String?): List<Server> = servers.filter { it.subscriptionId == subscriptionId }
 }

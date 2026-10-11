@@ -6,12 +6,15 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -28,11 +31,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.wearlink.core.WearLinkCore
 import dev.wearlink.core.data.Format
+import dev.wearlink.core.data.PingResult
+import dev.wearlink.core.data.ServerPing
 import dev.wearlink.mobile.sync.WatchSync
 import dev.wearlink.shared.model.Server
 import dev.wearlink.shared.model.Subscription
@@ -43,7 +49,10 @@ fun ServersScreen(modifier: Modifier, messages: Messages) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val data by WearLinkCore.store.data.collectAsState()
+    val pings by ServerPing.results.collectAsState()
     val store = WearLinkCore.store
+
+    fun ping(servers: List<Server>) = scope.launch { ServerPing.ping(context, servers) }
 
     fun sendToWatch(text: String) = scope.launch {
         runCatching { WatchSync.send(context, text) }
@@ -59,6 +68,12 @@ fun ServersScreen(modifier: Modifier, messages: Messages) {
     }
 
     LazyColumn(modifier.fillMaxSize()) {
+        item(key = "ping") {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("TCP-пинг до серверов", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                FilledTonalButton(onClick = { ping(data.servers) }) { Text("Проверить пинг") }
+            }
+        }
         data.subscriptions.forEach { subscription ->
             item(key = "sub-${subscription.id}") {
                 SubscriptionHeader(
@@ -71,13 +86,27 @@ fun ServersScreen(modifier: Modifier, messages: Messages) {
                         }
                     },
                     onSend = { sendToWatch(subscription.url) },
+                    onPing = { ping(data.serversOf(subscription.id)) },
                     onDelete = { scope.launch { store.deleteSubscription(subscription.id) } },
                 )
+            }
+            data.autoServer(subscription.id)?.let { auto ->
+                item(key = auto.id) {
+                    ServerRow(
+                        server = auto,
+                        selected = auto.id == data.selectedServerId,
+                        ping = null,
+                        onSelect = { scope.launch { store.select(auto.id) } },
+                        onSend = null,
+                        onDelete = null,
+                    )
+                }
             }
             items(data.serversOf(subscription.id), key = { it.id }) { server ->
                 ServerRow(
                     server = server,
                     selected = server.id == data.selectedServerId,
+                    ping = pings[server.id],
                     onSelect = { scope.launch { store.select(server.id) } },
                     onSend = { sendToWatch(server.link) },
                     onDelete = null,
@@ -91,6 +120,7 @@ fun ServersScreen(modifier: Modifier, messages: Messages) {
                 ServerRow(
                     server = server,
                     selected = server.id == data.selectedServerId,
+                    ping = pings[server.id],
                     onSelect = { scope.launch { store.select(server.id) } },
                     onSend = { sendToWatch(server.link) },
                     onDelete = { scope.launch { store.deleteServer(server.id) } },
@@ -115,7 +145,13 @@ private fun GroupTitle(title: String, subtitle: String?, actions: @Composable ()
 }
 
 @Composable
-private fun SubscriptionHeader(subscription: Subscription, onRefresh: () -> Unit, onSend: () -> Unit, onDelete: () -> Unit) {
+private fun SubscriptionHeader(
+    subscription: Subscription,
+    onRefresh: () -> Unit,
+    onSend: () -> Unit,
+    onPing: () -> Unit,
+    onDelete: () -> Unit,
+) {
     val details = listOfNotNull(Format.traffic(subscription), Format.expire(subscription), subscription.lastError)
         .joinToString(" · ")
         .ifEmpty { null }
@@ -123,6 +159,7 @@ private fun SubscriptionHeader(subscription: Subscription, onRefresh: () -> Unit
         OverflowMenu(
             listOf(
                 "Обновить" to onRefresh,
+                "Проверить пинг" to onPing,
                 "Отправить на часы" to onSend,
                 "Удалить подписку" to onDelete,
             ),
@@ -134,8 +171,9 @@ private fun SubscriptionHeader(subscription: Subscription, onRefresh: () -> Unit
 private fun ServerRow(
     server: Server,
     selected: Boolean,
+    ping: PingResult?,
     onSelect: () -> Unit,
-    onSend: () -> Unit,
+    onSend: (() -> Unit)?,
     onDelete: (() -> Unit)?,
 ) {
     Row(
@@ -154,8 +192,25 @@ private fun ServerRow(
                 color = if (server.isUsable) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
             )
         }
-        OverflowMenu(listOfNotNull("Отправить на часы" to onSend, onDelete?.let { "Удалить" to it }))
+        ping?.let { PingLabel(it) }
+        val menu = listOfNotNull(onSend?.let { "Отправить на часы" to it }, onDelete?.let { "Удалить" to it })
+        if (menu.isNotEmpty()) OverflowMenu(menu) else Spacer(Modifier.width(48.dp))
     }
+}
+
+@Composable
+private fun PingLabel(result: PingResult) {
+    val (text, color) = when (result) {
+        PingResult.Testing -> "…" to MaterialTheme.colorScheme.onSurfaceVariant
+        PingResult.Failed -> "нет" to MaterialTheme.colorScheme.error
+        PingResult.Udp -> "UDP" to MaterialTheme.colorScheme.onSurfaceVariant
+        is PingResult.Ok -> "${result.ms} мс" to when {
+            result.ms < 150 -> Color(0xFF2E7D32)
+            result.ms < 400 -> Color(0xFFF9A825)
+            else -> MaterialTheme.colorScheme.error
+        }
+    }
+    Text(text, color = color, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 4.dp))
 }
 
 @Composable

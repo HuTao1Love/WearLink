@@ -12,6 +12,7 @@ import dev.wearlink.shared.model.SingBoxOutbound
 import dev.wearlink.shared.model.Transport
 import dev.wearlink.shared.model.TrojanConfig
 import dev.wearlink.shared.model.TuicConfig
+import dev.wearlink.shared.model.UrlTestGroup
 import dev.wearlink.shared.model.VlessConfig
 import dev.wearlink.shared.model.VmessConfig
 import kotlinx.serialization.json.Json
@@ -133,7 +134,7 @@ object SingBoxConfig {
                 }
             }
             putJsonArray("outbounds") {
-                add(outbound(proxy))
+                outbounds(proxy).forEach { add(it) }
                 addJsonObject {
                     put("type", "direct")
                     put("tag", DIRECT_TAG)
@@ -200,6 +201,24 @@ object SingBoxConfig {
         }
     }
 
+    /** The proxy outbound(s), the one tagged [PROXY_TAG] first; an auto group adds its members. */
+    private fun outbounds(proxy: ProxyConfig): List<JsonObject> {
+        if (proxy !is UrlTestGroup) return listOf(outbound(proxy))
+        val members = proxy.members.mapIndexed { index, member ->
+            JsonObject(outbound(member) + ("tag" to JsonPrimitive("$PROXY_TAG-$index")))
+        }
+        val group = buildJsonObject {
+            put("type", "urltest")
+            put("tag", PROXY_TAG)
+            putJsonArray("outbounds") { members.forEach { add(it["tag"]!!) } }
+            put("url", "https://www.gstatic.com/generate_204")
+            put("interval", "3m")
+            // Don't hop between servers whose delays differ by less than this.
+            put("tolerance", 50)
+        }
+        return listOf(group) + members
+    }
+
     fun outbound(proxy: ProxyConfig): JsonObject = when (proxy) {
         is VlessConfig -> vless(proxy)
         is VmessConfig -> vmess(proxy)
@@ -209,6 +228,7 @@ object SingBoxConfig {
         is Hysteria1Config -> hysteria1(proxy)
         is TuicConfig -> tuic(proxy)
         is AnyTlsConfig -> anyTls(proxy)
+        is UrlTestGroup -> throw IllegalArgumentException("urltest group is built by outbounds()")
         is SingBoxOutbound -> JsonObject(
             Json.parseToJsonElement(proxy.json).jsonObject + ("tag" to JsonPrimitive(PROXY_TAG)),
         )

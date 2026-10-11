@@ -118,6 +118,18 @@ data class SingBoxOutbound(
     val label: String,
 ) : ProxyConfig
 
+/**
+ * "Auto select": every usable server of a subscription behind a sing-box urltest group, which
+ * keeps probing them and routes through the fastest one that answers (like Happ's auto mode).
+ */
+@Serializable
+@SerialName("urltest")
+data class UrlTestGroup(
+    val members: List<ProxyConfig>,
+    override val host: String = "",
+    override val port: Int = 0,
+) : ProxyConfig
+
 @Serializable
 sealed interface Transport {
     @Serializable
@@ -178,6 +190,7 @@ sealed interface Security {
  */
 @Serializable
 data class Server(
+    /** Stable id; "auto:<subscriptionId>" for a subscription's [UrlTestGroup]. */
     val id: String,
     val name: String,
     val link: String,
@@ -186,6 +199,15 @@ data class Server(
     val subscriptionId: String? = null,
 ) {
     val isUsable: Boolean get() = config != null
+
+    val isAutoSelect: Boolean get() = config is UrlTestGroup
+
+    companion object {
+        const val AUTO_PREFIX = "auto:"
+        const val AUTO_NAME = "⚡ Автовыбор"
+
+        fun autoId(subscriptionId: String) = AUTO_PREFIX + subscriptionId
+    }
 
     val protocolLabel: String
         get() = when (config) {
@@ -202,6 +224,7 @@ data class Server(
             is TuicConfig -> "TUIC"
             is AnyTlsConfig -> "AnyTLS"
             is SingBoxOutbound -> config.label
+            is UrlTestGroup -> "Лучший из ${config.members.size} по задержке"
             null -> link.substringBefore("://").uppercase()
         }
 }
